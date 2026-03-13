@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-padding-top: 56px; /* altura da barra de categorias sticky */
+}
+
+body {
+  background-color: #1a0505;
+  display: block;
+  min-width: 320px;
+}
+
+/* Esconde scrollbar mas mantém funcionalidade */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #2d0808;
+}
+::-webkit-scrollbar-thumb {
+  background: #4a0e0e;
+  border-radius: 2px;
+}
