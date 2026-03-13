@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import Admin from './pages/Admin'
-import { categorias } from './data/cardapio'
+import { categorias, ADICIONAIS } from './data/cardapio'
 import { useCarrinho } from './hooks/useCarrinho'
 import { CardItem } from './components/CardItem'
 import { DrawerCarrinho } from './components/DrawerCarrinho'
@@ -37,6 +37,14 @@ export default function App() {
   }, [])
 
   const taxaEntrega = cardapioState.taxaEntrega ?? CONFIG.taxaEntrega
+  const tempoEntrega = cardapioState.tempoEntrega ?? CONFIG.tempoEntrega
+
+  const adicionaisDisponiveis = ADICIONAIS
+    .filter(ad => !cardapioState.desativados.includes(ad.id))
+    .map(ad => {
+      const override = cardapioState.precos[ad.id]
+      return override !== undefined ? { ...ad, preco: override } : ad
+    })
 
   function aplicarOverrides(itens) {
     const precosVariacoes = cardapioState.precosVariacoes || {}
@@ -83,6 +91,14 @@ export default function App() {
   }
 
   const { itens, adicionar, remover, limpar, totalItens, subtotal } = useCarrinho()
+
+  const combosAtivos = (cardapioState.promocoes || []).filter(p => p.ativo && p.nome && p.precoCombo)
+
+  function adicionarCombo(combo) {
+    const nomeCombo = combo.itens.map(it => `${it.quantidade}x ${it.label}`).join(' + ')
+    adicionar({ id: `combo-${combo.id}`, nome: combo.nome || nomeCombo, preco: parseFloat(combo.precoCombo) })
+  }
+
   const categoriaExibida = categorias.find(c => c.id === categoriaAtiva)
   const conteudoRef = useRef(null)
 
@@ -174,7 +190,7 @@ export default function App() {
                 🚗 Entrega R$ {CONFIG.taxaEntrega.toFixed(2).replace('.', ',')}
               </span>
               <span className="bg-scooby-card border border-scooby-borda text-gray-300 text-xs px-3 py-1.5 rounded-full">
-                ⏱ {CONFIG.tempoEntrega}
+                ⏱ {tempoEntrega}
               </span>
             </div>
 
@@ -222,38 +238,81 @@ export default function App() {
       </div>
 
       {/* ── LAYOUT PRINCIPAL ── */}
-      <div ref={conteudoRef} className="relative z-10 max-w-7xl mx-auto px-4 py-6 lg:flex lg:gap-8 lg:items-start">
+      <div ref={conteudoRef} className="relative z-10 max-w-7xl mx-auto px-4 py-6">
 
-        {/* Cardápio */}
-        <main className="flex-1 pb-32 lg:pb-6">
-          <h2 className="text-white font-bold text-lg mb-5 flex items-center gap-2">
-            <span className="w-1 h-6 bg-scooby-amarelo rounded-full inline-block"></span>
-            {categoriaExibida.nome}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            {aplicarOverrides(categoriaExibida.itens).map(item => (
-              <CardItem
-                key={item.id}
-                item={item}
-                adicionar={adicionar}
-                lojaAberta={lojaAberta}
-                desativado={cardapioState.desativados.includes(item.id)}
-              />
-            ))}
+        {/* Combos/Promoções */}
+        {combosAtivos.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-white font-bold text-lg mb-3 flex items-center gap-2">
+              <span className="w-1 h-6 bg-scooby-vermelho rounded-full inline-block"></span>
+              🎉 Promoções do Dia
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {combosAtivos.map(combo => {
+                const descricaoItens = combo.itens.map(it => `${it.quantidade}x ${it.label}`).join(' + ')
+                return (
+                  <div key={combo.id} className="bg-scooby-card border-2 border-scooby-vermelho rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden hover:border-scooby-amarelo transition-all hover:shadow-lg hover:shadow-black/30">
+                    <div className="absolute top-3 right-3">
+                      <span className="bg-scooby-vermelho text-white text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">PROMOÇÃO</span>
+                    </div>
+                    <div>
+                      <h3 className="text-white font-bold text-base leading-tight pr-20">{combo.nome}</h3>
+                      <p className="text-gray-400 text-xs mt-1 leading-relaxed">{descricaoItens}</p>
+                      {combo.descricao && <p className="text-green-400 text-xs font-semibold mt-1">🎉 {combo.descricao}</p>}
+                    </div>
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-scooby-borda">
+                      <span className="text-green-400 font-black text-lg">R$ {Number(combo.precoCombo).toFixed(2).replace('.', ',')}</span>
+                      <button
+                        onClick={lojaAberta ? () => adicionarCombo(combo) : undefined}
+                        disabled={!lojaAberta}
+                        className={`flex items-center gap-1.5 font-bold text-sm px-4 py-2 rounded-xl transition active:scale-95 ${lojaAberta ? 'bg-scooby-vermelho hover:bg-red-700 text-white cursor-pointer' : 'bg-scooby-borda text-gray-500 cursor-not-allowed'}`}
+                      >
+                        <span className="text-lg leading-none">+</span>
+                        {lojaAberta ? 'Adicionar' : 'Fechado'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </main>
+        )}
 
-        {/* Sidebar carrinho — desktop */}
-        <aside className="hidden lg:block w-80 xl:w-96 flex-shrink-0 sticky top-16">
-          <CarrinhoSidebar
-            itens={itens}
-            subtotal={subtotal}
-            remover={remover}
-            adicionar={adicionar}
-            onFinalizar={handleFinalizar}
-            taxaEntrega={taxaEntrega}
-          />
-        </aside>
+        {/* Layout flex original */}
+        <div className="lg:flex lg:gap-8 lg:items-start">
+
+          {/* Cardápio */}
+          <main className="flex-1 pb-32 lg:pb-6">
+            <h2 className="text-white font-bold text-lg mb-5 flex items-center gap-2">
+              <span className="w-1 h-6 bg-scooby-amarelo rounded-full inline-block"></span>
+              {categoriaExibida.nome}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {aplicarOverrides(categoriaExibida.itens).map(item => (
+                <CardItem
+                  key={item.id}
+                  item={item}
+                  adicionar={adicionar}
+                  lojaAberta={lojaAberta}
+                  desativado={cardapioState.desativados.includes(item.id)}
+                  adicionaisDisponiveis={adicionaisDisponiveis}
+                />
+              ))}
+            </div>
+          </main>
+
+          {/* Sidebar carrinho — desktop */}
+          <aside className="hidden lg:block w-80 xl:w-96 flex-shrink-0 sticky top-16">
+            <CarrinhoSidebar
+              itens={itens}
+              subtotal={subtotal}
+              remover={remover}
+              adicionar={adicionar}
+              onFinalizar={handleFinalizar}
+              taxaEntrega={taxaEntrega}
+            />
+          </aside>
+        </div>
       </div>
 
       {/* ── RODAPÉ ── */}
@@ -309,6 +368,8 @@ export default function App() {
           onFechar={() => setModalAberto(false)}
           onConcluir={handleConcluir}
           taxaEntrega={taxaEntrega}
+          cupons={cardapioState.cupons || []}
+          tempoEntrega={tempoEntrega}
         />
       )}
 

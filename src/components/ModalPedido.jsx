@@ -4,8 +4,9 @@ import { salvarPedido } from '../utils/salvarPedido'
 
 const PAGAMENTOS = ['Pix', 'Dinheiro', 'Cartão de Débito', 'Cartão de Crédito']
 
-function formatarMensagemWhatsApp(dados, itens, subtotal, taxaEntrega) {
-  const total = subtotal + taxaEntrega
+function formatarMensagemWhatsApp(dados, itens, subtotal, taxaEntrega, desconto, cupomAplicado, tempoEntrega) {
+  const baseTotal = subtotal + (dados.tipoEntrega === 'entrega' ? taxaEntrega : 0)
+  const total = baseTotal - desconto
   const agora = new Date()
   const data = agora.toLocaleDateString('pt-BR')
   const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -25,12 +26,14 @@ function formatarMensagemWhatsApp(dados, itens, subtotal, taxaEntrega) {
     `📍 *${dados.tipoEntrega === 'entrega' ? 'Endereço' : 'Retirada'}:* ${dados.tipoEntrega === 'entrega' ? `${dados.rua}, ${dados.numero}${dados.complemento ? `, ${dados.complemento}` : ''} — ${dados.bairro}` : 'Retirar no local'}\n\n` +
     `🛒 *Itens:*\n${linhaItens}\n\n` +
     `💰 *Subtotal:* R$ ${subtotal.toFixed(2).replace('.', ',')}\n` +
-    `🚗 *Entrega:* R$ ${taxaEntrega.toFixed(2).replace('.', ',')}\n` +
+    (dados.tipoEntrega === 'entrega' ? `🚗 *Entrega:* R$ ${taxaEntrega.toFixed(2).replace('.', ',')}\n` : '') +
+    (cupomAplicado ? `🎟 *Cupom:* ${cupomAplicado.codigo} (-R$ ${desconto.toFixed(2).replace('.', ',')})\n` : '') +
     `💵 *TOTAL: R$ ${total.toFixed(2).replace('.', ',')}*\n\n` +
     `💳 *Pagamento:* ${dados.pagamento}\n` +
     (dados.pagamento === 'Dinheiro' && dados.troco ? `💵 *Troco para:* R$ ${dados.troco}\n` : '') +
     (dados.pagamento === 'Dinheiro' && !dados.troco ? `💵 *Troco:* Não precisa\n` : '') +
     (dados.observacao ? `📝 *Obs:* ${dados.observacao}\n` : '') +
+    (dados.tipoEntrega === 'entrega' ? `\n⏱ *Prazo de entrega:* ${tempoEntrega} a partir da confirmação do pedido.` : `\n⏱ *Prazo de retirada:* ${tempoEntrega} a partir da confirmação.`) +
     (dados.pagamento === 'Pix' ? `\n📎 *Envie o comprovante do Pix para confirmar seu pedido.*` : '')
   )
 }
@@ -102,6 +105,15 @@ const STORAGE_KEY = 'scooby_clientes'
 
 function normalizarTelefone(tel) {
   return tel.replace(/\D/g, '')
+}
+
+function telefoneValido(tel) {
+  const digits = tel.replace(/\D/g, '')
+  if (digits.length < 10 || digits.length > 11) return false
+  const ddd = parseInt(digits.substring(0, 2))
+  if (ddd < 11 || ddd > 99) return false
+  if (digits.length === 11 && digits[2] !== '9') return false
+  return true
 }
 
 function enderecoIgual(a, b) {
@@ -180,7 +192,7 @@ function salvarDadosCliente(dados) {
 
 const ENDERECO_VAZIO = { rua: '', numero: '', complemento: '', bairro: '' }
 
-export function ModalPedido({ itens, subtotal, onFechar, onConcluir, taxaEntrega = CONFIG.taxaEntrega }) {
+export function ModalPedido({ itens, subtotal, onFechar, onConcluir, taxaEntrega = CONFIG.taxaEntrega, cupons = [], tempoEntrega = CONFIG.tempoEntrega }) {
   const [etapa, setEtapa] = useState('form') // 'form' | 'pix'
   const [clienteRecuperado, setClienteRecuperado] = useState(null) // nome do cliente encontrado
   const [enderecosSalvos, setEnderecosSalvos] = useState([])       // lista de endereços salvos
@@ -195,8 +207,32 @@ export function ModalPedido({ itens, subtotal, onFechar, onConcluir, taxaEntrega
     observacao: '',
   })
   const [erros, setErros] = useState({})
+  const [cupomInput, setCupomInput] = useState('')
+  const [cupomAplicado, setCupomAplicado] = useState(null)
+  const [erroCupom, setErroCupom] = useState('')
 
   const total = subtotal + taxaEntrega
+
+  function aplicarCupom() {
+    if (!cupomInput.trim()) return
+    const encontrado = cupons.find(c => c.ativo && c.codigo.toUpperCase() === cupomInput.trim().toUpperCase())
+    if (encontrado) {
+      setCupomAplicado(encontrado)
+      setErroCupom('')
+    } else {
+      setCupomAplicado(null)
+      setErroCupom('Cupom inválido ou expirado.')
+    }
+  }
+
+  function calcularDesconto(base) {
+    if (!cupomAplicado) return 0
+    if (cupomAplicado.tipo === 'percentual') return base * (parseFloat(cupomAplicado.valor) / 100)
+    return Math.min(parseFloat(cupomAplicado.valor), base)
+  }
+
+  const desconto = calcularDesconto(subtotal + (dados.tipoEntrega === 'entrega' ? taxaEntrega : 0))
+  const totalComDesconto = subtotal + (dados.tipoEntrega === 'entrega' ? taxaEntrega : 0) - desconto
 
   function handleTelefoneChange(tel) {
     setDados(d => ({ ...d, telefone: tel }))
@@ -242,7 +278,11 @@ export function ModalPedido({ itens, subtotal, onFechar, onConcluir, taxaEntrega
   function validar() {
     const e = {}
     if (!dados.nome.trim()) e.nome = 'Informe seu nome'
-    if (!dados.telefone.trim()) e.telefone = 'Informe seu telefone'
+    if (!dados.telefone.trim()) {
+      e.telefone = 'Informe seu telefone'
+    } else if (!telefoneValido(dados.telefone)) {
+      e.telefone = 'Telefone inválido. Use o formato (DDD) 9 9999-9999'
+    }
     if (dados.tipoEntrega === 'entrega') {
       if (!dados.rua.trim())    e.rua    = 'Informe a rua'
       if (!dados.numero.trim()) e.numero = 'Informe o número'
@@ -264,9 +304,9 @@ export function ModalPedido({ itens, subtotal, onFechar, onConcluir, taxaEntrega
   }
 
   function enviarWhatsApp() {
-    const msg = formatarMensagemWhatsApp(dados, itens, subtotal, taxaEntrega)
+    const msg = formatarMensagemWhatsApp(dados, itens, subtotal, taxaEntrega, desconto, cupomAplicado, tempoEntrega)
     window.location.href = `whatsapp://send?phone=${CONFIG.whatsappNumero}&text=${msg}`
-    salvarPedido(dados, itens, subtotal, taxaEntrega)
+    salvarPedido(dados, itens, subtotal, taxaEntrega, desconto, cupomAplicado)
     onConcluir()
   }
 
@@ -487,6 +527,33 @@ export function ModalPedido({ itens, subtotal, onFechar, onConcluir, taxaEntrega
                 />
               </div>
 
+              {/* Cupom de desconto */}
+              {cupons.filter(c => c.ativo).length > 0 && (
+                <div>
+                  <label className="text-gray-300 text-sm font-medium block mb-1">🎟 Cupom de desconto</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Digite o código"
+                      value={cupomInput}
+                      onChange={e => { setCupomInput(e.target.value.toUpperCase()); setCupomAplicado(null); setErroCupom('') }}
+                      className="flex-1 bg-scooby-escuro border border-scooby-borda text-white rounded-xl px-4 py-3 text-sm font-mono uppercase focus:outline-none focus:border-scooby-amarelo"
+                    />
+                    <button
+                      type="button"
+                      onClick={aplicarCupom}
+                      className="bg-scooby-borda hover:bg-scooby-vermelho text-white font-bold px-4 rounded-xl text-sm transition"
+                    >Aplicar</button>
+                  </div>
+                  {erroCupom && <p className="text-red-400 text-xs mt-1">{erroCupom}</p>}
+                  {cupomAplicado && (
+                    <p className="text-green-400 text-xs mt-1 font-semibold">
+                      ✅ Cupom aplicado: {cupomAplicado.tipo === 'percentual' ? `${cupomAplicado.valor}% de desconto` : `R$ ${Number(cupomAplicado.valor).toFixed(2)} de desconto`}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Resumo */}
               <div className="bg-scooby-escuro rounded-xl p-4 border border-scooby-borda space-y-1.5">
                 <div className="flex justify-between text-gray-400 text-sm">
@@ -499,10 +566,16 @@ export function ModalPedido({ itens, subtotal, onFechar, onConcluir, taxaEntrega
                     <span>R$ {taxaEntrega.toFixed(2).replace('.', ',')}</span>
                   </div>
                 )}
+                {cupomAplicado && (
+                  <div className="flex justify-between text-green-400 text-sm">
+                    <span>Desconto ({cupomAplicado.codigo})</span>
+                    <span>- R$ {desconto.toFixed(2).replace('.', ',')}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold text-white border-t border-scooby-borda pt-1.5">
                   <span>Total</span>
                   <span className="text-scooby-amarelo text-lg">
-                    R$ {(dados.tipoEntrega === 'entrega' ? total : subtotal).toFixed(2).replace('.', ',')}
+                    R$ {totalComDesconto.toFixed(2).replace('.', ',')}
                   </span>
                 </div>
               </div>
@@ -518,7 +591,7 @@ export function ModalPedido({ itens, subtotal, onFechar, onConcluir, taxaEntrega
 
           {etapa === 'pix' && (
             <TelaPix
-              total={dados.tipoEntrega === 'entrega' ? total : subtotal}
+              total={totalComDesconto}
               onConfirmar={enviarWhatsApp}
             />
           )}

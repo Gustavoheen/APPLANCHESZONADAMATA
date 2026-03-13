@@ -29,8 +29,13 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { precos = {}, desativados = [] } = req.body
-      const estado = { precos, desativados }
+      const { precos = {}, desativados = [], precosVariacoes = {}, taxaEntrega, tempoEntrega, promocoes, cupons, senhaCliente } = req.body
+      const estado = { precos, desativados, precosVariacoes }
+      if (taxaEntrega !== undefined) estado.taxaEntrega = taxaEntrega
+      if (tempoEntrega !== undefined) estado.tempoEntrega = tempoEntrega
+      if (promocoes !== undefined) estado.promocoes = promocoes
+      if (cupons !== undefined) estado.cupons = cupons
+      if (senhaCliente !== undefined) estado.senhaCliente = senhaCliente
       await put(KEY, JSON.stringify(estado), {
         access: 'private',
         contentType: 'application/json',

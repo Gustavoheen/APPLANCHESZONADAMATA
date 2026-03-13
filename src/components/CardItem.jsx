@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ADICIONAIS, categorias } from '../data/cardapio'
 
 const BEBIDAS = categorias.find(c => c.id === 'bebidas')?.itens || []
@@ -7,8 +8,8 @@ const BEBIDAS = categorias.find(c => c.id === 'bebidas')?.itens || []
 function ModalVariacao({ item, campo, titulo, onEscolher, onFechar }) {
   const opcoes = item[campo]
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onFechar}>
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70" onClick={onFechar}>
       <div
         className="bg-scooby-card border border-scooby-borda rounded-2xl p-6 w-full max-w-sm"
         onClick={e => e.stopPropagation()}
@@ -34,12 +35,13 @@ function ModalVariacao({ item, campo, titulo, onEscolher, onFechar }) {
           Cancelar
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
 // ── Modal de adicionais ──
-function ModalAdicionais({ onContinuar, onPular }) {
+function ModalAdicionais({ adicionais, onContinuar, onPular }) {
   const [selecionados, setSelecionados] = useState([])
 
   function toggle(adicional) {
@@ -50,14 +52,29 @@ function ModalAdicionais({ onContinuar, onPular }) {
     )
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+  if (adicionais.length === 0) {
+    // Sem adicionais disponíveis, pula direto
+    return createPortal(
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70">
+        <div className="bg-scooby-card border border-scooby-borda rounded-2xl p-6 w-full max-w-sm text-center">
+          <p className="text-gray-400 text-sm mb-4">Nenhum adicional disponível no momento.</p>
+          <button onClick={() => onContinuar([])} className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition active:scale-95">
+            Continuar →
+          </button>
+        </div>
+      </div>,
+      document.body
+    )
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70">
       <div className="bg-scooby-card border border-scooby-borda rounded-2xl p-6 w-full max-w-sm">
         <h3 className="text-scooby-amarelo font-bold text-base mb-1">Quer adicionar algo?</h3>
         <p className="text-gray-400 text-xs mb-4">Selecione os adicionais desejados</p>
 
         <div className="flex flex-col gap-2 mb-5">
-          {ADICIONAIS.map(ad => {
+          {adicionais.map(ad => {
             const marcado = selecionados.find(a => a.id === ad.id)
             return (
               <button
@@ -86,14 +103,15 @@ function ModalAdicionais({ onContinuar, onPular }) {
           Pular
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
 // ── Modal de bebidas ──
 function ModalBebidas({ onEscolher, onPular }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70">
       <div className="bg-scooby-card border border-scooby-borda rounded-2xl p-6 w-full max-w-sm max-h-[85vh] flex flex-col">
         <h3 className="text-scooby-amarelo font-bold text-base mb-1">Quer beber algo?</h3>
         <p className="text-gray-400 text-xs mb-4">Escolha uma bebida para acompanhar</p>
@@ -115,12 +133,13 @@ function ModalBebidas({ onEscolher, onPular }) {
           Não, obrigado
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
 // ── Card principal ──
-export function CardItem({ item, adicionar, lojaAberta = true, desativado = false }) {
+export function CardItem({ item, adicionar, lojaAberta = true, desativado = false, adicionaisDisponiveis = ADICIONAIS }) {
   const [etapa, setEtapa] = useState(null) // null | 'variacao' | 'adicionais' | 'bebidas'
   const [variacaoEscolhida, setVariacaoEscolhida] = useState(null)
 
@@ -192,7 +211,7 @@ export function CardItem({ item, adicionar, lojaAberta = true, desativado = fals
               </span>
             )}
           </div>
-          <p className="text-gray-400 text-xs leading-relaxed mb-3">{item.descricao}</p>
+          <p className="text-gray-400 text-xs leading-relaxed mb-1">{item.descricao}</p>
 
           {temTamanhos && (
             <div className="flex gap-2 mb-3 flex-wrap">
@@ -256,6 +275,7 @@ export function CardItem({ item, adicionar, lojaAberta = true, desativado = fals
 
       {etapa === 'adicionais' && (
         <ModalAdicionais
+          adicionais={adicionaisDisponiveis}
           onContinuar={handleAdicionaisContinuar}
           onPular={handleAdicionaisPular}
         />

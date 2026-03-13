@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { categorias } from '../data/cardapio'
+import { categorias, ADICIONAIS } from '../data/cardapio'
+import { CONFIG } from '../config'
 
-const SENHA = 'scooby2024'
+const SENHA_MASTER = 'scooby_master_dev#2024'
+const NOME_MASTER = 'Gustavo'
+const SENHA_JULIO_PADRAO = 'scooby2024'
 const WHATSAPP_DEV = '5532999301657'
 
 function hoje() {
@@ -23,6 +26,63 @@ function filtrarPedidos(pedidos, dataFiltro, pagamentoFiltro) {
   })
 }
 
+function gerarCupom(pedido) {
+  const itens = pedido.itensPedido.split(' | ').map(i => `<div class="item">• ${i}</div>`).join('')
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Pedido</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Courier New', monospace; font-size: 12px; width: 280px; padding: 6px 8px; color: #000; }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .big { font-size: 15px; }
+  .line { border-top: 1px dashed #000; margin: 6px 0; }
+  .row { display: flex; justify-content: space-between; margin: 2px 0; }
+  .item { margin: 2px 0; }
+  .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 14px; margin: 3px 0; }
+  @media print { body { margin: 0; } }
+</style></head>
+<body>
+  <div class="center bold big">SCOOBY-DOO LANCHES</div>
+  <div class="center" style="font-size:10px">Hamburguer Artesanal</div>
+  <div class="line"></div>
+  <div class="row"><span>Pedido:</span><span class="bold">${pedido.numeroPedido || pedido.id || '—'}</span></div>
+  <div class="row"><span>Data:</span><span>${pedido.data} às ${pedido.hora}</span></div>
+  <div class="line"></div>
+  <div class="bold" style="margin-bottom:4px">ITENS:</div>
+  ${itens}
+  <div class="line"></div>
+  <div class="row"><span>Subtotal:</span><span>R$ ${pedido.subtotal}</span></div>
+  <div class="row"><span>Taxa entrega:</span><span>R$ ${pedido.taxaEntrega}</span></div>
+  ${pedido.desconto && parseFloat(pedido.desconto) > 0 ? `<div class="row"><span>Desconto:</span><span>- R$ ${pedido.desconto}</span></div>` : ''}
+  <div class="line"></div>
+  <div class="total-row"><span>TOTAL:</span><span>R$ ${pedido.total}</span></div>
+  <div class="line"></div>
+  <div class="row"><span>Pagamento:</span><span>${pedido.pagamento}</span></div>
+  <div class="row"><span>Tipo:</span><span>${pedido.tipoEntrega}</span></div>
+  <div class="line"></div>
+  <div class="bold">CLIENTE:</div>
+  <div>${pedido.nomeCliente}</div>
+  ${pedido.telefone ? `<div>Tel: ${pedido.telefone}</div>` : ''}
+  ${pedido.tipoEntrega === 'Entrega' && pedido.endereco ? `<div style="margin-top:2px">End: ${pedido.endereco}</div>` : ''}
+  ${pedido.observacao ? `<div class="line"></div><div class="bold">OBS:</div><div>${pedido.observacao}</div>` : ''}
+  <div class="line"></div>
+  <div class="center" style="font-size:10px;margin-top:4px">Obrigado pela preferência!</div>
+</body></html>`
+}
+
+function imprimirPedido(pedido) {
+  const w = window.open('', '_blank', 'width=340,height=700,left=0,top=0')
+  if (!w) { alert('Permita pop-ups para imprimir.'); return }
+  w.document.write(gerarCupom(pedido))
+  w.document.close()
+  w.focus()
+  setTimeout(() => {
+    w.print()
+    w.onafterprint = () => w.close()
+  }, 250)
+}
+
 function CardStat({ label, valor, sub, cor }) {
   return (
     <div className="bg-scooby-card border border-scooby-borda rounded-2xl p-4">
@@ -33,7 +93,7 @@ function CardStat({ label, valor, sub, cor }) {
   )
 }
 
-function CardPedido({ pedido }) {
+function CardPedido({ pedido, onImprimir }) {
   const [expandido, setExpandido] = useState(false)
 
   const corPagamento = {
@@ -125,10 +185,16 @@ function CardPedido({ pedido }) {
             </div>
           </div>
 
-          <div className="border-t border-scooby-borda pt-3 flex gap-6 text-sm">
+          <div className="border-t border-scooby-borda pt-3 flex flex-wrap items-center gap-4 text-sm">
             <span className="text-gray-400">Subtotal: <span className="text-white">R$ {pedido.subtotal}</span></span>
             <span className="text-gray-400">Entrega: <span className="text-white">R$ {pedido.taxaEntrega}</span></span>
             <span className="text-gray-400">Total: <span className="text-scooby-amarelo font-bold">R$ {pedido.total}</span></span>
+            <button
+              onClick={() => onImprimir(pedido)}
+              className="ml-auto flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
+            >
+              🖨️ Imprimir
+            </button>
           </div>
         </div>
       )}
@@ -160,6 +226,17 @@ export default function Admin() {
   const [solicitacaoTexto, setSolicitacaoTexto] = useState('')
   const [precosVariacoesEditados, setPrecosVariacoesEditados] = useState({})
   const [taxaEntregaEditada, setTaxaEntregaEditada] = useState(CONFIG.taxaEntrega)
+  const [tempoEntregaEditado, setTempoEntregaEditado] = useState(CONFIG.tempoEntrega)
+  const [promocoesEditadas, setPromocoesEditadas] = useState([])
+  const [cuponsEditados, setCuponsEditados] = useState([])
+  const [isMaster, setIsMaster] = useState(false)
+  const [senhaClienteAtual, setSenhaClienteAtual] = useState(SENHA_JULIO_PADRAO)
+  // Para troca de senha:
+  const [senhaAtualInput, setSenhaAtualInput] = useState('')
+  const [novaSenhaInput, setNovaSenhaInput] = useState('')
+  const [confirmarSenhaInput, setConfirmarSenhaInput] = useState('')
+  const [msgSenha, setMsgSenha] = useState('')
+  const [salvandoSenha, setSalvandoSenha] = useState(false)
 
   function toggleLoja() {
     const novoValor = !lojaForcada
@@ -176,7 +253,33 @@ export default function Admin() {
       const res = await fetch('/api/pedido')
       if (res.ok) {
         const dados = await res.json()
-        setPedidos(dados.reverse())
+        const lista = dados.reverse()
+
+        if (isFirstFetchRef.current) {
+          // Primeira carga: marca todos como já "vistos" para não imprimir histórico
+          lista.forEach(p => {
+            const id = p.numeroPedido || p.id
+            if (id) pedidosImpressosRef.current.add(id)
+          })
+          localStorage.setItem('scooby_impressos', JSON.stringify([...pedidosImpressosRef.current]))
+          isFirstFetchRef.current = false
+        } else if (autoPrintRef.current) {
+          // Fetches subsequentes: detecta novos e imprime
+          const novos = lista.filter(p => {
+            const id = p.numeroPedido || p.id
+            return id && !pedidosImpressosRef.current.has(id)
+          })
+          novos.forEach(p => {
+            const id = p.numeroPedido || p.id
+            pedidosImpressosRef.current.add(id)
+            imprimirPedido(p)
+          })
+          if (novos.length > 0) {
+            localStorage.setItem('scooby_impressos', JSON.stringify([...pedidosImpressosRef.current]))
+          }
+        }
+
+        setPedidos(lista)
         setUltimaAtualizacao(new Date().toLocaleTimeString('pt-BR'))
       }
     } catch (err) {
@@ -185,8 +288,31 @@ export default function Admin() {
   }, [])
 
   useEffect(() => {
-    const salvo = sessionStorage.getItem('admin_auth')
-    if (salvo === SENHA) setAutenticado(true)
+    // Carrega estado do cardápio E verifica sessão salva
+    fetch('/api/cardapio-state')
+      .then(r => r.json())
+      .then(estado => {
+        const julioAtual = estado.senhaCliente || SENHA_JULIO_PADRAO
+        setSenhaClienteAtual(julioAtual)
+        setCardapioState(estado)
+        setPrecosEditados(estado.precos || {})
+        setDesativadosEditados(estado.desativados || [])
+        setPrecosVariacoesEditados(estado.precosVariacoes || {})
+        setTaxaEntregaEditada(estado.taxaEntrega ?? CONFIG.taxaEntrega)
+        setTempoEntregaEditado(estado.tempoEntrega ?? CONFIG.tempoEntrega)
+        setPromocoesEditadas(estado.promocoes || [])
+        setCuponsEditados(estado.cupons || [])
+        // Restaura sessão
+        const salvo = sessionStorage.getItem('admin_auth')
+        if (salvo === 'master') {
+          setIsMaster(true)
+          setAutenticado(true)
+        } else if (salvo === 'julio') {
+          setIsMaster(false)
+          setAutenticado(true)
+        }
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -196,20 +322,6 @@ export default function Admin() {
     const interval = setInterval(buscarPedidos, 15000)
     return () => clearInterval(interval)
   }, [autenticado, buscarPedidos])
-
-  useEffect(() => {
-    if (!autenticado) return
-    fetch('/api/cardapio-state')
-      .then(r => r.json())
-      .then(estado => {
-        setCardapioState(estado)
-        setPrecosEditados(estado.precos || {})
-        setDesativadosEditados(estado.desativados || [])
-        setPrecosVariacoesEditados(estado.precosVariacoes || {})
-        setTaxaEntregaEditada(estado.taxaEntrega ?? CONFIG.taxaEntrega)
-      })
-      .catch(() => {})
-  }, [autenticado])
 
   function toggleDesativado(id) {
     setDesativadosEditados(prev =>
@@ -242,11 +354,14 @@ export default function Admin() {
           desativados: desativadosEditados,
           precosVariacoes: precosVariacoesEditados,
           taxaEntrega: parseFloat(String(taxaEntregaEditada).replace(',', '.')) || CONFIG.taxaEntrega,
+          tempoEntrega: tempoEntregaEditado.trim() || CONFIG.tempoEntrega,
+          promocoes: promocoesEditadas,
+          cupons: cuponsEditados,
         }),
       })
       if (res.ok) {
         const taxaFinal = parseFloat(String(taxaEntregaEditada).replace(',', '.')) || CONFIG.taxaEntrega
-        setCardapioState({ precos: precosFinal, desativados: desativadosEditados, precosVariacoes: precosVariacoesEditados, taxaEntrega: taxaFinal })
+        setCardapioState({ precos: precosFinal, desativados: desativadosEditados, precosVariacoes: precosVariacoesEditados, taxaEntrega: taxaFinal, promocoes: promocoesEditadas, cupons: cuponsEditados })
         setMsgCardapio('Alterações salvas com sucesso!')
       } else {
         setMsgCardapio('Erro ao salvar. Tente novamente.')
@@ -278,11 +393,113 @@ export default function Admin() {
 
   function handleLogin(e) {
     e.preventDefault()
-    if (senha === SENHA) {
-      sessionStorage.setItem('admin_auth', SENHA)
+    if (senha === SENHA_MASTER) {
+      sessionStorage.setItem('admin_auth', 'master')
+      setIsMaster(true)
+      setAutenticado(true)
+    } else if (senha === senhaClienteAtual) {
+      sessionStorage.setItem('admin_auth', 'julio')
+      setIsMaster(false)
       setAutenticado(true)
     } else {
       alert('Senha incorreta!')
+    }
+  }
+
+  async function salvarNovaSenha() {
+    setMsgSenha('')
+    if (!senhaAtualInput || !novaSenhaInput || !confirmarSenhaInput) {
+      setMsgSenha('Preencha todos os campos.')
+      return
+    }
+    if (senhaAtualInput !== SENHA_MASTER && senhaAtualInput !== senhaClienteAtual) {
+      setMsgSenha('Senha atual incorreta.')
+      return
+    }
+    if (novaSenhaInput !== confirmarSenhaInput) {
+      setMsgSenha('As novas senhas não coincidem.')
+      return
+    }
+    if (novaSenhaInput.length < 6) {
+      setMsgSenha('A nova senha deve ter no mínimo 6 caracteres.')
+      return
+    }
+    setSalvandoSenha(true)
+    try {
+      // Monta payload com todos os estados atuais + nova senha
+      const precosFinal = {}
+      Object.entries(precosEditados).forEach(([id, val]) => {
+        const num = parseFloat(String(val).replace(',', '.'))
+        if (!isNaN(num) && num > 0) precosFinal[id] = num
+      })
+      const res = await fetch('/api/cardapio-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          precos: precosFinal,
+          desativados: desativadosEditados,
+          precosVariacoes: precosVariacoesEditados,
+          taxaEntrega: parseFloat(String(taxaEntregaEditada).replace(',', '.')) || CONFIG.taxaEntrega,
+          tempoEntrega: tempoEntregaEditado.trim() || CONFIG.tempoEntrega,
+          promocoes: promocoesEditadas,
+          cupons: cuponsEditados,
+          senhaCliente: novaSenhaInput,
+        }),
+      })
+      if (res.ok) {
+        setSenhaClienteAtual(novaSenhaInput)
+        setMsgSenha('✅ Senha alterada com sucesso!')
+        setSenhaAtualInput('')
+        setNovaSenhaInput('')
+        setConfirmarSenhaInput('')
+      } else {
+        setMsgSenha('Erro ao salvar. Tente novamente.')
+      }
+    } catch {
+      setMsgSenha('Erro de conexão.')
+    } finally {
+      setSalvandoSenha(false)
+      setTimeout(() => setMsgSenha(''), 5000)
+    }
+  }
+
+  const [deploying, setDeploying] = useState(false)
+  const [msgDeploy, setMsgDeploy] = useState('')
+
+  // ── Auto-print ────────────────────────────────────────────────
+  const [autoPrint, setAutoPrint] = useState(
+    localStorage.getItem('scooby_autoprint') === 'true'
+  )
+  const autoPrintRef = useRef(autoPrint)
+  const pedidosImpressosRef = useRef(
+    new Set(JSON.parse(localStorage.getItem('scooby_impressos') || '[]'))
+  )
+  const isFirstFetchRef = useRef(true)
+
+  useEffect(() => { autoPrintRef.current = autoPrint }, [autoPrint])
+
+  function toggleAutoPrint() {
+    const novo = !autoPrint
+    setAutoPrint(novo)
+    localStorage.setItem('scooby_autoprint', String(novo))
+  }
+
+  async function triggerDeploy() {
+    setDeploying(true)
+    setMsgDeploy('')
+    try {
+      const res = await fetch('/api/deploy', { method: 'POST' })
+      const data = await res.json()
+      if (data.sucesso) {
+        setMsgDeploy('🚀 Deploy iniciado! Aguarde ~1 minuto.')
+      } else {
+        setMsgDeploy('Erro ao iniciar deploy.')
+      }
+    } catch {
+      setMsgDeploy('Erro de conexão.')
+    } finally {
+      setDeploying(false)
+      setTimeout(() => setMsgDeploy(''), 8000)
     }
   }
 
@@ -329,6 +546,13 @@ export default function Admin() {
       c.nome.toLowerCase().includes(buscaCliente.toLowerCase()) ||
       c.telefone.includes(buscaCliente)
     )
+
+  const todosItensFlat = categorias.flatMap(cat => cat.itens.map(item => ({
+    id: item.id,
+    nome: item.nome,
+    preco: item.preco,
+    temVariacao: !!(item.proteinas || item.tamanhos),
+  })))
 
   function exportarExcel() {
     const lista = pedidosFiltrados.map(p => ({
@@ -399,6 +623,12 @@ export default function Admin() {
               {ultimaAtualizacao ? `Atualizado às ${ultimaAtualizacao}` : 'Carregando...'}
               <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse inline-block"></span>
             </p>
+            <p className="text-xs mt-0.5">
+              {isMaster
+                ? <span className="text-purple-300 font-semibold">👑 {NOME_MASTER} (Master)</span>
+                : <span className="text-blue-300 font-semibold">👤 Julio</span>
+              }
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -413,6 +643,18 @@ export default function Admin() {
             <span className={`w-2.5 h-2.5 rounded-full ${lojaForcada ? 'bg-green-300 animate-pulse' : 'bg-gray-500'}`}></span>
             {lojaForcada ? 'Loja Aberta' : 'Loja Fechada'}
           </button>
+          {isMaster && (
+            <div className="flex items-center gap-2">
+              {msgDeploy && <span className="text-xs text-green-300 font-semibold">{msgDeploy}</span>}
+              <button
+                onClick={triggerDeploy}
+                disabled={deploying}
+                className="flex items-center gap-2 font-bold text-sm px-4 py-2 rounded-xl border-2 bg-purple-800 border-purple-500 text-white hover:bg-purple-700 disabled:opacity-50 transition"
+              >
+                {deploying ? '⏳ Deployando...' : '🚀 Deploy'}
+              </button>
+            </div>
+          )}
           <a href="/" className="text-gray-300 hover:text-white text-sm transition">← Voltar ao site</a>
         </div>
       </header>
@@ -424,6 +666,7 @@ export default function Admin() {
             { id: 'pedidos', label: '📋 Pedidos' },
             { id: 'clientes', label: '👥 Clientes' },
             { id: 'cardapio', label: '🍔 Cardápio' },
+            { id: 'seguranca', label: '🔐 Segurança' },
           ].map(aba => (
             <button
               key={aba.id}
@@ -522,7 +765,19 @@ export default function Admin() {
               </select>
             </div>
 
-            <div className="flex gap-2 ml-auto">
+            <div className="flex gap-2 ml-auto flex-wrap">
+              <button
+                onClick={toggleAutoPrint}
+                className={`flex items-center gap-2 font-semibold text-sm px-4 py-2 rounded-xl border-2 transition ${
+                  autoPrint
+                    ? 'bg-green-700 border-green-500 text-white hover:bg-green-600'
+                    : 'bg-gray-800 border-gray-600 text-gray-400 hover:text-white'
+                }`}
+                title={autoPrint ? 'Auto-impressão ligada (clique para desligar)' : 'Auto-impressão desligada (clique para ligar)'}
+              >
+                <span className={`w-2 h-2 rounded-full ${autoPrint ? 'bg-green-300 animate-pulse' : 'bg-gray-500'}`}></span>
+                🖨️ Auto-print {autoPrint ? 'ON' : 'OFF'}
+              </button>
               <button
                 onClick={buscarPedidos}
                 className="bg-scooby-borda hover:bg-scooby-vermelho text-white px-4 py-2 rounded-xl text-sm transition"
@@ -567,7 +822,7 @@ export default function Admin() {
           ) : (
             <div className="space-y-2">
               {pedidosFiltrados.map((p, i) => (
-                <CardPedido key={p.id || i} pedido={p} />
+                <CardPedido key={p.id || i} pedido={p} onImprimir={imprimirPedido} />
               ))}
             </div>
           )}
@@ -677,20 +932,35 @@ export default function Admin() {
             </div>
           </div>
 
-          {/* Taxa de entrega */}
-          <div className="bg-scooby-card border border-scooby-borda rounded-2xl p-5">
-            <h3 className="text-scooby-amarelo font-bold text-sm mb-3">🚗 Taxa de Entrega</h3>
-            <div className="flex items-center gap-3">
-              <span className="text-gray-400 text-sm">R$</span>
-              <input
-                type="number"
-                step="0.50"
-                min="0"
-                value={taxaEntregaEditada}
-                onChange={e => setTaxaEntregaEditada(e.target.value)}
-                className="w-28 bg-scooby-escuro border border-scooby-borda text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-scooby-amarelo"
-              />
-              <span className="text-gray-500 text-xs">por entrega (atual: R$ {Number(taxaEntregaEditada).toFixed(2).replace('.', ',')})</span>
+          {/* Taxa de entrega + Tempo */}
+          <div className="bg-scooby-card border border-scooby-borda rounded-2xl p-5 space-y-4">
+            <div>
+              <h3 className="text-scooby-amarelo font-bold text-sm mb-3">🚗 Taxa de Entrega</h3>
+              <div className="flex items-center gap-3">
+                <span className="text-gray-400 text-sm">R$</span>
+                <input
+                  type="number"
+                  step="0.50"
+                  min="0"
+                  value={taxaEntregaEditada}
+                  onChange={e => setTaxaEntregaEditada(e.target.value)}
+                  className="w-28 bg-scooby-escuro border border-scooby-borda text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-scooby-amarelo"
+                />
+                <span className="text-gray-500 text-xs">por entrega (atual: R$ {Number(taxaEntregaEditada).toFixed(2).replace('.', ',')})</span>
+              </div>
+            </div>
+            <div className="border-t border-scooby-borda pt-4">
+              <h3 className="text-scooby-amarelo font-bold text-sm mb-3">⏱ Tempo de Entrega</h3>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  placeholder="Ex: 40 a 60 min"
+                  value={tempoEntregaEditado}
+                  onChange={e => setTempoEntregaEditado(e.target.value)}
+                  className="w-48 bg-scooby-escuro border border-scooby-borda text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-scooby-amarelo"
+                />
+                <span className="text-gray-500 text-xs">aparece no cabeçalho do site</span>
+              </div>
             </div>
           </div>
 
@@ -776,6 +1046,257 @@ export default function Admin() {
             </div>
           ))}
 
+          {/* Promoções do Dia */}
+          <div className="bg-scooby-card border border-scooby-borda rounded-2xl overflow-hidden">
+            <div className="bg-scooby-borda px-5 py-3 flex items-center justify-between">
+              <h3 className="text-scooby-amarelo font-bold text-sm">🎉 Promoções / Combos do Dia</h3>
+              <button
+                onClick={() => setPromocoesEditadas(prev => [...prev, {
+                  id: Date.now().toString(36),
+                  nome: '',
+                  itens: [{ quantidade: 1, itemId: todosItensFlat[0]?.id || '', label: todosItensFlat[0]?.nome || '' }],
+                  precoCombo: '',
+                  descricao: '',
+                  ativo: true
+                }])}
+                className="bg-scooby-vermelho hover:bg-red-700 text-white text-xs font-bold px-3 py-1 rounded-lg transition"
+              >+ Novo combo</button>
+            </div>
+            <div className="p-5 space-y-4">
+              {promocoesEditadas.length === 0 && (
+                <p className="text-gray-500 text-sm text-center py-2">Nenhum combo cadastrado.</p>
+              )}
+              {promocoesEditadas.map((promo, idx) => (
+                <div key={promo.id} className="bg-scooby-escuro border border-scooby-borda rounded-xl p-4 space-y-3">
+
+                  {/* Cabeçalho: toggle + nome + excluir */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setPromocoesEditadas(prev => prev.map((p, i) => i === idx ? { ...p, ativo: !p.ativo } : p))}
+                      className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative ${promo.ativo ? 'bg-green-600' : 'bg-gray-600'}`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${promo.ativo ? 'right-1' : 'left-1'}`}></span>
+                    </button>
+                    <span className={`text-xs font-semibold flex-shrink-0 ${promo.ativo ? 'text-green-400' : 'text-gray-500'}`}>
+                      {promo.ativo ? 'Ativo' : 'Inativo'}
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Nome do combo (ex: Combo do Dia)"
+                      value={promo.nome}
+                      onChange={e => setPromocoesEditadas(prev => prev.map((p, i) => i === idx ? { ...p, nome: e.target.value } : p))}
+                      className="flex-1 bg-scooby-card border border-scooby-borda text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-scooby-amarelo"
+                    />
+                    <button
+                      onClick={() => setPromocoesEditadas(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-gray-500 hover:text-red-400 text-xl leading-none transition flex-shrink-0"
+                    >×</button>
+                  </div>
+
+                  {/* Itens do combo */}
+                  <div className="space-y-2">
+                    <label className="text-gray-400 text-xs block">Itens inclusos no combo:</label>
+                    {promo.itens.map((itemCombo, itemIdx) => (
+                      <div key={itemIdx} className="flex items-center gap-2">
+                        {/* Quantidade */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => setPromocoesEditadas(prev => prev.map((p, i) => i === idx ? {
+                              ...p,
+                              itens: p.itens.map((it, ii) => ii === itemIdx ? { ...it, quantidade: Math.max(1, it.quantidade - 1) } : it)
+                            } : p))}
+                            className="w-7 h-7 rounded-full bg-scooby-borda hover:bg-red-800 text-white font-bold flex items-center justify-center text-sm transition"
+                          >−</button>
+                          <span className="text-white font-bold w-6 text-center text-sm">{itemCombo.quantidade}</span>
+                          <button
+                            onClick={() => setPromocoesEditadas(prev => prev.map((p, i) => i === idx ? {
+                              ...p,
+                              itens: p.itens.map((it, ii) => ii === itemIdx ? { ...it, quantidade: it.quantidade + 1 } : it)
+                            } : p))}
+                            className="w-7 h-7 rounded-full bg-scooby-vermelho hover:bg-red-700 text-white font-bold flex items-center justify-center text-sm transition"
+                          >+</button>
+                        </div>
+
+                        <span className="text-gray-500 text-sm flex-shrink-0">×</span>
+
+                        {/* Select item */}
+                        <select
+                          value={itemCombo.itemId}
+                          onChange={e => {
+                            const selected = todosItensFlat.find(it => String(it.id) === e.target.value)
+                            setPromocoesEditadas(prev => prev.map((p, i) => i === idx ? {
+                              ...p,
+                              itens: p.itens.map((it, ii) => ii === itemIdx ? { ...it, itemId: selected?.id || e.target.value, label: selected?.nome || '' } : it)
+                            } : p))
+                          }}
+                          className="flex-1 min-w-0 bg-scooby-card border border-scooby-borda text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-scooby-amarelo"
+                        >
+                          {todosItensFlat.map(item => (
+                            <option key={item.id} value={item.id}>{item.nome}</option>
+                          ))}
+                        </select>
+
+                        {/* Remover item do combo */}
+                        {promo.itens.length > 1 && (
+                          <button
+                            onClick={() => setPromocoesEditadas(prev => prev.map((p, i) => i === idx ? { ...p, itens: p.itens.filter((_, ii) => ii !== itemIdx) } : p))}
+                            className="text-gray-600 hover:text-red-400 text-lg leading-none transition flex-shrink-0"
+                          >×</button>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Adicionar item ao combo */}
+                    <button
+                      onClick={() => setPromocoesEditadas(prev => prev.map((p, i) => i === idx ? {
+                        ...p,
+                        itens: [...p.itens, { quantidade: 1, itemId: todosItensFlat[0]?.id || '', label: todosItensFlat[0]?.nome || '' }]
+                      } : p))}
+                      className="text-scooby-amarelo hover:text-yellow-300 text-xs font-semibold transition"
+                    >+ Adicionar item ao combo</button>
+                  </div>
+
+                  {/* Preço e descrição */}
+                  <div className="flex gap-3">
+                    <div className="w-40 flex-shrink-0">
+                      <label className="text-gray-400 text-xs mb-1 block">Preço do combo (R$)</label>
+                      <input
+                        type="number" step="0.01" min="0"
+                        placeholder="Ex: 45.00"
+                        value={promo.precoCombo}
+                        onChange={e => setPromocoesEditadas(prev => prev.map((p, i) => i === idx ? { ...p, precoCombo: e.target.value } : p))}
+                        className="w-full bg-scooby-card border border-scooby-borda text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-scooby-amarelo"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-gray-400 text-xs mb-1 block">Descrição extra (opcional)</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Válido apenas hoje!"
+                        value={promo.descricao}
+                        onChange={e => setPromocoesEditadas(prev => prev.map((p, i) => i === idx ? { ...p, descricao: e.target.value } : p))}
+                        className="w-full bg-scooby-card border border-scooby-borda text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-scooby-amarelo"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Preview do combo */}
+                  {promo.nome && promo.precoCombo && (
+                    <div className="bg-scooby-card rounded-lg px-3 py-2 text-xs text-gray-400">
+                      Preview: <span className="text-scooby-amarelo font-semibold">{promo.nome}</span> — {promo.itens.map(it => `${it.quantidade}x ${it.label || todosItensFlat.find(f => String(f.id) === String(it.itemId))?.nome || ''}`).join(' + ')} por <span className="text-green-400 font-bold">R$ {Number(promo.precoCombo).toFixed(2).replace('.', ',')}</span>
+                    </div>
+                  )}
+
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Cupons de Desconto */}
+          <div className="bg-scooby-card border border-scooby-borda rounded-2xl overflow-hidden">
+            <div className="bg-scooby-borda px-5 py-3 flex items-center justify-between">
+              <h3 className="text-scooby-amarelo font-bold text-sm">🎟 Cupons de Desconto</h3>
+              <button
+                onClick={() => setCuponsEditados(prev => [...prev, { id: Date.now().toString(36), codigo: '', tipo: 'percentual', valor: '', ativo: true }])}
+                className="bg-scooby-vermelho hover:bg-red-700 text-white text-xs font-bold px-3 py-1 rounded-lg transition"
+              >+ Novo cupom</button>
+            </div>
+            <div className="p-5 space-y-3">
+              {cuponsEditados.length === 0 && (
+                <p className="text-gray-500 text-sm text-center py-2">Nenhum cupom cadastrado.</p>
+              )}
+              {cuponsEditados.map((cupom, idx) => (
+                <div key={cupom.id} className="bg-scooby-escuro border border-scooby-borda rounded-xl p-4">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <button
+                      onClick={() => setCuponsEditados(prev => prev.map((c, i) => i === idx ? { ...c, ativo: !c.ativo } : c))}
+                      className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative ${cupom.ativo ? 'bg-green-600' : 'bg-gray-600'}`}
+                    >
+                      <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${cupom.ativo ? 'right-1' : 'left-1'}`}></span>
+                    </button>
+                    <input
+                      type="text"
+                      placeholder="Código (ex: SCOOBY10)"
+                      value={cupom.codigo}
+                      onChange={e => setCuponsEditados(prev => prev.map((c, i) => i === idx ? { ...c, codigo: e.target.value.toUpperCase() } : c))}
+                      className="flex-1 min-w-0 bg-scooby-card border border-scooby-borda text-white rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:border-scooby-amarelo"
+                    />
+                    <select
+                      value={cupom.tipo}
+                      onChange={e => setCuponsEditados(prev => prev.map((c, i) => i === idx ? { ...c, tipo: e.target.value } : c))}
+                      className="bg-scooby-card border border-scooby-borda text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-scooby-amarelo"
+                    >
+                      <option value="percentual">% desconto</option>
+                      <option value="fixo">R$ fixo</option>
+                    </select>
+                    <input
+                      type="number" step="0.01" min="0"
+                      placeholder={cupom.tipo === 'percentual' ? 'Ex: 10' : 'Ex: 5.00'}
+                      value={cupom.valor}
+                      onChange={e => setCuponsEditados(prev => prev.map((c, i) => i === idx ? { ...c, valor: e.target.value } : c))}
+                      className="w-24 bg-scooby-card border border-scooby-borda text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-scooby-amarelo text-right"
+                    />
+                    <span className="text-gray-500 text-sm">{cupom.tipo === 'percentual' ? '%' : 'R$'}</span>
+                    <button
+                      onClick={() => setCuponsEditados(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-gray-500 hover:text-red-400 text-lg leading-none transition"
+                    >×</button>
+                  </div>
+                  {cupom.codigo && (
+                    <p className="text-gray-500 text-xs mt-2">
+                      Clientes usam o código <span className="text-scooby-amarelo font-mono font-bold">{cupom.codigo}</span> para ganhar {cupom.tipo === 'percentual' ? `${cupom.valor}% de desconto` : `R$ ${Number(cupom.valor).toFixed(2)} de desconto`}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Adicionais */}
+          <div className="bg-scooby-card border border-scooby-borda rounded-2xl overflow-hidden">
+            <div className="bg-scooby-borda px-5 py-3">
+              <h3 className="text-scooby-amarelo font-bold text-sm">🍗 Adicionais</h3>
+            </div>
+            <div className="divide-y divide-scooby-borda">
+              {ADICIONAIS.map(ad => {
+                const ativo = !desativadosEditados.includes(ad.id)
+                const precoAtual = precosEditados[ad.id] !== undefined ? precosEditados[ad.id] : ad.preco
+                return (
+                  <div key={ad.id} className="px-5 py-3">
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <button
+                        onClick={() => toggleDesativado(ad.id)}
+                        className={`flex-shrink-0 w-12 h-6 rounded-full transition-colors relative ${ativo ? 'bg-green-600' : 'bg-gray-600'}`}
+                        title={ativo ? 'Clique para desativar' : 'Clique para ativar'}
+                      >
+                        <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${ativo ? 'right-1' : 'left-1'}`}></span>
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-semibold text-sm ${ativo ? 'text-white' : 'text-gray-500'}`}>
+                          {ad.emoji} {ad.nome}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-gray-500 text-xs">R$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={precoAtual}
+                          onChange={e => handlePrecoChange(ad.id, e.target.value)}
+                          className="w-24 bg-scooby-escuro border border-scooby-borda text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-scooby-amarelo text-right"
+                        />
+                      </div>
+                      <span className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${ativo ? 'bg-green-900 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
+                        {ativo ? 'Disponível' : 'Indisponível'}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Solicitar alteração */}
           <div className="bg-scooby-card border border-scooby-borda rounded-2xl p-6 space-y-4">
             <h3 className="text-scooby-amarelo font-bold text-base">Solicitar alteração ao desenvolvedor</h3>
@@ -797,6 +1318,90 @@ export default function Admin() {
               <span>📲</span>
               Enviar via WhatsApp
             </button>
+          </div>
+
+        </div>
+      )}
+
+      {/* ── ABA SEGURANÇA ── */}
+      {abaAtiva === 'seguranca' && (
+        <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
+
+          {/* Acesso Master */}
+          <div className="bg-scooby-card border border-purple-800 rounded-2xl p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-2xl">👑</span>
+              <div>
+                <h3 className="text-purple-300 font-bold text-base">👑 Acesso Master — Gustavo</h3>
+                <p className="text-gray-500 text-xs">Senha master gerenciada pelo desenvolvedor. Acesso completo + deploy.</p>
+              </div>
+            </div>
+            <div className="bg-scooby-escuro rounded-xl px-4 py-3 text-sm text-gray-400">
+              A senha master é gerenciada diretamente pelo desenvolvedor e não pode ser alterada por aqui.
+              Em caso de necessidade, entre em contato com o desenvolvedor.
+            </div>
+          </div>
+
+          {/* Alterar senha do cliente */}
+          <div className="bg-scooby-card border border-scooby-borda rounded-2xl p-5 space-y-4">
+            <div className="flex items-center gap-3 mb-1">
+              <span className="text-2xl">🔑</span>
+              <div>
+                <h3 className="text-scooby-amarelo font-bold text-base">🔑 Alterar Senha do Julio</h3>
+                <p className="text-gray-500 text-xs">Senha de acesso do usuário Julio ao painel</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-gray-300 text-sm font-medium block mb-1">Senha atual</label>
+                <input
+                  type="password"
+                  placeholder="Digite a senha atual"
+                  value={senhaAtualInput}
+                  onChange={e => setSenhaAtualInput(e.target.value)}
+                  className="w-full bg-scooby-escuro border border-scooby-borda text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-scooby-amarelo"
+                />
+              </div>
+              <div>
+                <label className="text-gray-300 text-sm font-medium block mb-1">Nova senha</label>
+                <input
+                  type="password"
+                  placeholder="Mínimo 6 caracteres"
+                  value={novaSenhaInput}
+                  onChange={e => setNovaSenhaInput(e.target.value)}
+                  className="w-full bg-scooby-escuro border border-scooby-borda text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-scooby-amarelo"
+                />
+              </div>
+              <div>
+                <label className="text-gray-300 text-sm font-medium block mb-1">Confirmar nova senha</label>
+                <input
+                  type="password"
+                  placeholder="Digite a nova senha novamente"
+                  value={confirmarSenhaInput}
+                  onChange={e => setConfirmarSenhaInput(e.target.value)}
+                  className="w-full bg-scooby-escuro border border-scooby-borda text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-scooby-amarelo"
+                />
+              </div>
+
+              {msgSenha && (
+                <p className={`text-sm font-semibold px-3 py-2 rounded-xl ${msgSenha.includes('✅') ? 'bg-green-800 text-green-300' : 'bg-red-900 text-red-300'}`}>
+                  {msgSenha}
+                </p>
+              )}
+
+              <button
+                onClick={salvarNovaSenha}
+                disabled={salvandoSenha}
+                className="w-full bg-scooby-vermelho hover:bg-red-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition"
+              >
+                {salvandoSenha ? 'Salvando...' : '🔒 Salvar nova senha'}
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-yellow-900/30 border border-yellow-700/40 rounded-xl px-4 py-3 text-yellow-300 text-xs">
+            ⚠️ Guarde sua senha em local seguro. Caso esqueça, o desenvolvedor pode resetá-la.
           </div>
 
         </div>

@@ -9,9 +9,9 @@ function gerarNumeroPedido() {
   return `${hoje.replace(/\//g, '')}-${String(novo).padStart(3, '0')}`
 }
 
-export async function salvarPedido(dados, itens, subtotal, taxaEntregaDinamica = CONFIG.taxaEntrega) {
+export async function salvarPedido(dados, itens, subtotal, taxaEntregaDinamica = CONFIG.taxaEntrega, desconto = 0, cupomAplicado = null) {
   const taxa = dados.tipoEntrega === 'entrega' ? taxaEntregaDinamica : 0
-  const total = subtotal + taxa
+  const total = subtotal + taxa - desconto
 
   const itensPedido = itens
     .map(l => `${l.qtd}x ${l.item.nome}${l.variacao ? ` (${l.variacao})` : ''} R$${(l.preco * l.qtd).toFixed(2)}`)
@@ -31,6 +31,8 @@ export async function salvarPedido(dados, itens, subtotal, taxaEntregaDinamica =
     itensPedido,
     subtotal:     subtotal.toFixed(2),
     taxaEntrega:  taxa.toFixed(2),
+    desconto:     desconto.toFixed(2),
+    cupom:        cupomAplicado ? cupomAplicado.codigo : '',
     total:        total.toFixed(2),
     pagamento:    dados.pagamento,
     observacao:   dados.observacao || '',
