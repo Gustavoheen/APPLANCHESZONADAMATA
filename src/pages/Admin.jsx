@@ -93,8 +93,9 @@ function CardStat({ label, valor, sub, cor }) {
   )
 }
 
-function CardPedido({ pedido, onImprimir }) {
+function CardPedido({ pedido, onImprimir, selecionado, onToggleSelecionado, infoImpressao }) {
   const [expandido, setExpandido] = useState(false)
+  const id = pedido.numeroPedido || pedido.id
 
   const corPagamento = {
     'Pix': 'bg-blue-900 text-blue-300',
@@ -108,46 +109,71 @@ function CardPedido({ pedido, onImprimir }) {
     : 'bg-teal-900/50 text-teal-300'
 
   return (
-    <div className="bg-scooby-card border border-scooby-borda rounded-2xl overflow-hidden">
+    <div className={`bg-scooby-card border rounded-2xl overflow-hidden transition ${selecionado ? 'border-scooby-amarelo' : 'border-scooby-borda'}`}>
       {/* Linha principal */}
-      <button
-        onClick={() => setExpandido(e => !e)}
-        className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-scooby-borda/30 transition"
-      >
-        {/* Número e hora */}
-        <div className="flex-shrink-0 text-center w-14">
-          <p className="text-scooby-amarelo font-bold text-sm">{pedido.hora}</p>
-          <p className="text-gray-600 text-xs">{pedido.numeroPedido?.split('-').pop() || '—'}</p>
+      <div className="flex items-stretch">
+        {/* Checkbox */}
+        <div
+          className="flex items-center px-4 cursor-pointer hover:bg-scooby-borda/20 transition"
+          onClick={e => { e.stopPropagation(); onToggleSelecionado(id) }}
+        >
+          <input
+            type="checkbox"
+            checked={selecionado}
+            onChange={() => onToggleSelecionado(id)}
+            className="w-4 h-4 cursor-pointer accent-yellow-400"
+            onClick={e => e.stopPropagation()}
+          />
         </div>
 
-        <div className="w-px h-10 bg-scooby-borda flex-shrink-0" />
-
-        {/* Cliente */}
-        <div className="flex-1 min-w-0">
-          <p className="text-white font-semibold text-sm truncate">{pedido.nomeCliente}</p>
-          <p className="text-gray-500 text-xs truncate">{pedido.endereco}</p>
-        </div>
-
-        {/* Itens resumidos */}
-        <div className="hidden md:block flex-1 min-w-0">
-          <p className="text-gray-300 text-xs truncate">{pedido.itensPedido}</p>
-        </div>
-
-        {/* Total */}
-        <div className="flex-shrink-0 text-right">
-          <p className="text-scooby-amarelo font-bold">R$ {pedido.total}</p>
-          <div className="flex gap-1 mt-1 justify-end">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${corPagamento}`}>
-              {pedido.pagamento === 'Cartão de Débito' ? 'Débito' : pedido.pagamento === 'Cartão de Crédito' ? 'Crédito' : pedido.pagamento}
-            </span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${corTipo}`}>
-              {pedido.tipoEntrega}
-            </span>
+        {/* Botão expandir */}
+        <button
+          onClick={() => setExpandido(e => !e)}
+          className="flex-1 text-left py-4 pr-4 flex items-center gap-4 hover:bg-scooby-borda/30 transition"
+        >
+          {/* Número e hora */}
+          <div className="flex-shrink-0 text-center w-14">
+            <p className="text-scooby-amarelo font-bold text-sm">{pedido.hora}</p>
+            <p className="text-gray-600 text-xs">{pedido.numeroPedido?.split('-').pop() || '—'}</p>
           </div>
-        </div>
 
-        <span className="text-gray-500 text-sm flex-shrink-0">{expandido ? '▲' : '▼'}</span>
-      </button>
+          <div className="w-px h-10 bg-scooby-borda flex-shrink-0" />
+
+          {/* Cliente */}
+          <div className="flex-1 min-w-0">
+            <p className="text-white font-semibold text-sm truncate">{pedido.nomeCliente}</p>
+            <p className="text-gray-500 text-xs truncate">{pedido.endereco}</p>
+          </div>
+
+          {/* Itens resumidos */}
+          <div className="hidden md:block flex-1 min-w-0">
+            <p className="text-gray-300 text-xs truncate">{pedido.itensPedido}</p>
+          </div>
+
+          {/* Total + badges + status impressão */}
+          <div className="flex-shrink-0 text-right">
+            <p className="text-scooby-amarelo font-bold">R$ {pedido.total}</p>
+            <div className="flex gap-1 mt-1 justify-end flex-wrap">
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${corPagamento}`}>
+                {pedido.pagamento === 'Cartão de Débito' ? 'Débito' : pedido.pagamento === 'Cartão de Crédito' ? 'Crédito' : pedido.pagamento}
+              </span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${corTipo}`}>
+                {pedido.tipoEntrega}
+              </span>
+            </div>
+            {/* Status de impressão */}
+            {infoImpressao ? (
+              <p className="text-xs text-green-400 mt-1 font-medium">
+                🖨️ {infoImpressao.tipo === 'auto' ? 'Auto' : 'Manual'} · {infoImpressao.hora}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-600 mt-1">Não impresso</p>
+            )}
+          </div>
+
+          <span className="text-gray-500 text-sm flex-shrink-0">{expandido ? '▲' : '▼'}</span>
+        </button>
+      </div>
 
       {/* Detalhes expandidos */}
       {expandido && (
@@ -190,10 +216,14 @@ function CardPedido({ pedido, onImprimir }) {
             <span className="text-gray-400">Entrega: <span className="text-white">R$ {pedido.taxaEntrega}</span></span>
             <span className="text-gray-400">Total: <span className="text-scooby-amarelo font-bold">R$ {pedido.total}</span></span>
             <button
-              onClick={() => onImprimir(pedido)}
-              className="ml-auto flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
+              onClick={() => onImprimir(pedido, 'manual')}
+              className={`ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition ${
+                infoImpressao
+                  ? 'bg-blue-900 hover:bg-blue-800 text-blue-200'
+                  : 'bg-gray-700 hover:bg-gray-600 text-white'
+              }`}
             >
-              🖨️ Imprimir
+              🖨️ {infoImpressao ? 'Reimprimir' : 'Imprimir'}
             </button>
           </div>
         </div>
@@ -256,26 +286,26 @@ export default function Admin() {
         const lista = dados.reverse()
 
         if (isFirstFetchRef.current) {
-          // Primeira carga: marca todos como já "vistos" para não imprimir histórico
+          // Primeira carga: marca todos como "vistos" para não auto-imprimir histórico
           lista.forEach(p => {
             const id = p.numeroPedido || p.id
-            if (id) pedidosImpressosRef.current.add(id)
+            if (id) pedidosVistosRef.current.add(id)
           })
-          localStorage.setItem('scooby_impressos', JSON.stringify([...pedidosImpressosRef.current]))
+          localStorage.setItem('scooby_vistos', JSON.stringify([...pedidosVistosRef.current]))
           isFirstFetchRef.current = false
         } else if (autoPrintRef.current) {
-          // Fetches subsequentes: detecta novos e imprime
+          // Fetches subsequentes: detecta pedidos novos (não vistos) e imprime
           const novos = lista.filter(p => {
             const id = p.numeroPedido || p.id
-            return id && !pedidosImpressosRef.current.has(id)
+            return id && !pedidosVistosRef.current.has(id)
           })
           novos.forEach(p => {
             const id = p.numeroPedido || p.id
-            pedidosImpressosRef.current.add(id)
-            imprimirPedido(p)
+            pedidosVistosRef.current.add(id)
+            handleImprimir(p, 'auto')
           })
           if (novos.length > 0) {
-            localStorage.setItem('scooby_impressos', JSON.stringify([...pedidosImpressosRef.current]))
+            localStorage.setItem('scooby_vistos', JSON.stringify([...pedidosVistosRef.current]))
           }
         }
 
@@ -470,18 +500,66 @@ export default function Admin() {
   const [autoPrint, setAutoPrint] = useState(
     localStorage.getItem('scooby_autoprint') === 'true'
   )
-  const autoPrintRef = useRef(autoPrint)
-  const pedidosImpressosRef = useRef(
-    new Set(JSON.parse(localStorage.getItem('scooby_impressos') || '[]'))
+  // pedidosImpressos: { [id]: { hora, tipo: 'auto'|'manual' } } — registros de impressão
+  const [pedidosImpressos, setPedidosImpressos] = useState(
+    () => JSON.parse(localStorage.getItem('scooby_impressos') || '{}')
   )
+  const pedidosImpressosRef = useRef(pedidosImpressos)
+  // pedidosVistosRef: Set de IDs já "vistos" na abertura do admin (não reimprimir histórico)
+  const pedidosVistosRef = useRef(
+    new Set(JSON.parse(localStorage.getItem('scooby_vistos') || '[]'))
+  )
+  const autoPrintRef = useRef(autoPrint)
   const isFirstFetchRef = useRef(true)
 
+  // Seleção para impressão em lote
+  const [selecionados, setSelecionados] = useState(new Set())
+
   useEffect(() => { autoPrintRef.current = autoPrint }, [autoPrint])
+  useEffect(() => { pedidosImpressosRef.current = pedidosImpressos }, [pedidosImpressos])
 
   function toggleAutoPrint() {
     const novo = !autoPrint
     setAutoPrint(novo)
     localStorage.setItem('scooby_autoprint', String(novo))
+  }
+
+  function handleImprimir(pedido, tipo = 'manual') {
+    imprimirPedido(pedido)
+    const id = pedido.numeroPedido || pedido.id
+    if (!id) return
+    const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    const novos = { ...pedidosImpressosRef.current, [id]: { hora, tipo } }
+    pedidosImpressosRef.current = novos
+    setPedidosImpressos(novos)
+    localStorage.setItem('scooby_impressos', JSON.stringify(novos))
+  }
+
+  function toggleSelecionado(id) {
+    if (!id) return
+    setSelecionados(prev => {
+      const novo = new Set(prev)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
+  }
+
+  function selecionarTodos() {
+    if (selecionados.size === pedidosFiltrados.length) {
+      setSelecionados(new Set())
+    } else {
+      setSelecionados(new Set(pedidosFiltrados.map(p => p.numeroPedido || p.id).filter(Boolean)))
+    }
+  }
+
+  function imprimirSelecionados() {
+    const lista = pedidosFiltrados.filter(p => selecionados.has(p.numeroPedido || p.id))
+    lista.forEach((p, i) => {
+      // Atraso escalonado para não abrir todas as janelas ao mesmo tempo
+      setTimeout(() => handleImprimir(p, 'manual'), i * 400)
+    })
+    setSelecionados(new Set())
   }
 
   async function triggerDeploy() {
@@ -765,7 +843,16 @@ export default function Admin() {
               </select>
             </div>
 
-            <div className="flex gap-2 ml-auto flex-wrap">
+            <div className="flex gap-2 ml-auto flex-wrap items-center">
+              {/* Impressão em lote */}
+              {selecionados.size > 0 && (
+                <button
+                  onClick={imprimirSelecionados}
+                  className="flex items-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-sm px-4 py-2 rounded-xl transition"
+                >
+                  🖨️ Imprimir {selecionados.size} selecionado{selecionados.size > 1 ? 's' : ''}
+                </button>
+              )}
               <button
                 onClick={toggleAutoPrint}
                 className={`flex items-center gap-2 font-semibold text-sm px-4 py-2 rounded-xl border-2 transition ${
@@ -776,7 +863,7 @@ export default function Admin() {
                 title={autoPrint ? 'Auto-impressão ligada (clique para desligar)' : 'Auto-impressão desligada (clique para ligar)'}
               >
                 <span className={`w-2 h-2 rounded-full ${autoPrint ? 'bg-green-300 animate-pulse' : 'bg-gray-500'}`}></span>
-                🖨️ Auto-print {autoPrint ? 'ON' : 'OFF'}
+                🖨️ Auto {autoPrint ? 'ON' : 'OFF'}
               </button>
               <button
                 onClick={buscarPedidos}
@@ -821,8 +908,32 @@ export default function Admin() {
             </div>
           ) : (
             <div className="space-y-2">
+              {/* Selecionar todos */}
+              <div className="flex items-center gap-3 px-1 pb-1">
+                <button
+                  onClick={selecionarTodos}
+                  className="text-xs text-gray-400 hover:text-scooby-amarelo transition font-medium"
+                >
+                  {selecionados.size === pedidosFiltrados.length && pedidosFiltrados.length > 0
+                    ? '✓ Desmarcar todos'
+                    : `Selecionar todos (${pedidosFiltrados.length})`
+                  }
+                </button>
+                {selecionados.size > 0 && (
+                  <span className="text-xs text-scooby-amarelo font-semibold">
+                    {selecionados.size} selecionado{selecionados.size > 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
               {pedidosFiltrados.map((p, i) => (
-                <CardPedido key={p.id || i} pedido={p} onImprimir={imprimirPedido} />
+                <CardPedido
+                  key={p.id || i}
+                  pedido={p}
+                  onImprimir={handleImprimir}
+                  selecionado={selecionados.has(p.numeroPedido || p.id)}
+                  onToggleSelecionado={toggleSelecionado}
+                  infoImpressao={pedidosImpressos[p.numeroPedido || p.id] || null}
+                />
               ))}
             </div>
           )}
